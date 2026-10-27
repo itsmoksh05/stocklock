@@ -27,6 +27,12 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testRuntimeOnly 'com.h2database:h2'
+
+	// Flyway migration engine
+	implementation 'org.flywaydb:flyway-core'
+
+	// PostgresSQL-specific Flyway support
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 }
 
 tasks.named('test') {
