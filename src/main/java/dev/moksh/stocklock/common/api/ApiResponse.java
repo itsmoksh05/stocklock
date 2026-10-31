@@ -1,8 +1,13 @@
 package dev.moksh.stocklock.common.api;
 
 import dev.moksh.stocklock.exception.ApiErrorResponse;
+import io.swagger.v3.oas.annotations.media.Schema;
 
-public record ApiResponse<T>(boolean success, T data, ApiErrorResponse error) {
+@Schema(description = "Common API envelope. Successful responses contain data; error responses contain error.")
+public record ApiResponse<T>(
+		@Schema(description = "True for a successful operation and false for an API error.", example = "true") boolean success,
+		@Schema(description = "Concrete resource or reservation response DTO for the operation.") T data,
+		@Schema(description = "Present for error responses; null for successful responses.") ApiErrorResponse error) {
 
 	public static <T> ApiResponse<T> success(T data) {
 		return new ApiResponse<>(true, data, null);
