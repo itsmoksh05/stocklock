@@ -19,76 +19,30 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const pullNumber = context.payload.pull_request.number;
+            const repositoryName = `${owner}/${repo}`;
 
-            const query = `
-              query($owner: String!, $repo: String!, $number: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  pullRequest(number: $number) {
-                    closingIssuesReferences(first: 100) {
-                      nodes {
-                        number
-                        repository {
-                          nameWithOwner
-                        }
-                      }
-                    }
-                    timelineItems(first: 100, itemTypes: [CONNECTED_EVENT]) {
-                      nodes {
-                        ... on ConnectedEvent {
-                          source {
-                            __typename
-                            ... on Issue {
-                              number
-                              repository {
-                                nameWithOwner
-                              }
-                            }
-                          }
-                          subject {
-                            __typename
-                            ... on Issue {
-                              number
-                              repository {
-                                nameWithOwner
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
+            // Read the pull request timeline. Explicit issue-PR connections are
+            // exposed as "connected" events whose subject is the linked issue.
+            const timelineEvents = await github.paginate(
+              github.rest.issues.listEventsForTimeline,
+              {
+                owner,
+                repo,
+                issue_number: pullNumber,
+                per_page: 100
               }
-            `;
-
-            const result = await github.graphql(query, {
-              owner,
-              repo,
-              number: pullNumber
-            });
-
-            const pullRequest = result.repository?.pullRequest;
-            if (!pullRequest) {
-              throw new Error(`Could not load pull request #${pullNumber}.`);
-            }
+            );
 
             const linkedIssueNumbers = new Set();
-            const addSameRepositoryIssue = (candidate) => {
+
+            for (const event of timelineEvents) {
               if (
-                candidate?.__typename === "Issue" &&
-                candidate.repository?.nameWithOwner === `${owner}/${repo}`
+                event.event === "connected" &&
+                event.subject?.repository?.full_name === repositoryName &&
+                Number.isInteger(event.subject?.number)
               ) {
-                linkedIssueNumbers.add(candidate.number);
+                linkedIssueNumbers.add(event.subject.number);
               }
-            };
-
-            for (const issue of pullRequest.closingIssuesReferences.nodes) {
-              addSameRepositoryIssue({ ...issue, __typename: "Issue" });
-            }
-
-            for (const event of pullRequest.timelineItems.nodes) {
-              addSameRepositoryIssue(event.source);
-              addSameRepositoryIssue(event.subject);
             }
 
             if (linkedIssueNumbers.size === 0) {
