@@ -14,20 +14,26 @@ public final class ApiResponseSchemas {
 	}
 
 	@Schema(name = "ApiResponseResourceResponse", description = "Success envelope containing resource details.")
-	public record ResourceResponseEnvelope(boolean success, ResourceResponse data, ApiErrorResponse error) {
+	public record ResourceResponseEnvelope(
+			boolean success, ResourceResponse data,
+			@Schema(nullable = true) ApiErrorResponse error) {
 	}
 
 	@Schema(name = "ApiResponseResourceAvailabilityResponse", description = "Success envelope containing current resource availability.")
 	public record ResourceAvailabilityResponseEnvelope(
-			boolean success, ResourceAvailabilityResponse data, ApiErrorResponse error) {
+			boolean success, ResourceAvailabilityResponse data,
+			@Schema(nullable = true) ApiErrorResponse error) {
 	}
 
 	@Schema(name = "ApiResponseReservationResponse", description = "Success envelope containing a reservation summary.")
-	public record ReservationResponseEnvelope(boolean success, ReservationResponse data, ApiErrorResponse error) {
+	public record ReservationResponseEnvelope(
+			boolean success, ReservationResponse data,
+			@Schema(nullable = true) ApiErrorResponse error) {
 	}
 
 	@Schema(name = "ApiResponseReservationDetailsResponse", description = "Success envelope containing reservation details.")
 	public record ReservationDetailsResponseEnvelope(
-			boolean success, ReservationDetailsResponse data, ApiErrorResponse error) {
+			boolean success, ReservationDetailsResponse data,
+			@Schema(nullable = true) ApiErrorResponse error) {
 	}
 }
