@@ -64,7 +64,10 @@ class ReservationControllerTests {
 		long reservationCountBefore = reservationRepository.count();
 
 		createReservation(resource.getId(), 3, "insufficient-key")
-				.andExpect(status().isConflict());
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.status", is(409)))
+				.andExpect(jsonPath("$.message", is("Insufficient available quantity")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(2);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountBefore);
@@ -78,7 +81,10 @@ class ReservationControllerTests {
 					.content("""
 							{"resourceId":9223372036854775807,"quantity":1}
 							"""))
-				.andExpect(status().isNotFound());
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status", is(404)))
+				.andExpect(jsonPath("$.message", is("Resource not found")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
 	}
 
 	@Test
@@ -92,11 +98,18 @@ class ReservationControllerTests {
 								""".formatted(quantity)))
 					.andExpect(status().isBadRequest());
 		}
+		mockMvc.perform(post("/api/reservations")
+					.header("Idempotency-Key", "missing-quantity-key")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"resourceId\":1}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.quantity").exists());
 	}
 
 	@Test
 	void rejectsMissingOrNonpositiveResourceId() throws Exception {
-		for (String body : new String[] {"{\"quantity\":1}", "{\"resourceId\":0,\"quantity\":1}"}) {
+		for (String body : new String[] {
+				"{\"quantity\":1}", "{\"resourceId\":0,\"quantity\":1}", "{\"resourceId\":-1,\"quantity\":1}"}) {
 			mockMvc.perform(post("/api/reservations")
 						.header("Idempotency-Key", "invalid-resource-" + body.hashCode())
 						.contentType(MediaType.APPLICATION_JSON)
@@ -127,7 +140,9 @@ class ReservationControllerTests {
 		createReservation(resource.getId(), 3, "quantity-mismatch-key").andExpect(status().isCreated());
 		long reservationCountAfterCreate = reservationRepository.count();
 
-		createReservation(resource.getId(), 4, "quantity-mismatch-key").andExpect(status().isConflict());
+		createReservation(resource.getId(), 4, "quantity-mismatch-key")
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message", is("Idempotency key was already used with a different request")));
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountAfterCreate);
@@ -140,7 +155,9 @@ class ReservationControllerTests {
 		createReservation(firstResource.getId(), 3, "resource-mismatch-key").andExpect(status().isCreated());
 		long reservationCountAfterCreate = reservationRepository.count();
 
-		createReservation(secondResource.getId(), 3, "resource-mismatch-key").andExpect(status().isConflict());
+		createReservation(secondResource.getId(), 3, "resource-mismatch-key")
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message", is("Idempotency key was already used with a different request")));
 
 		assertThat(resourceRepository.findById(firstResource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 		assertThat(resourceRepository.findById(secondResource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
@@ -167,13 +184,19 @@ class ReservationControllerTests {
 	void rejectsMissingBlankAndOversizedIdempotencyKeys() throws Exception {
 		String body = "{\"resourceId\":1,\"quantity\":1}";
 		mockMvc.perform(post("/api/reservations").contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Required request header is missing")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
 		mockMvc.perform(post("/api/reservations").header("Idempotency-Key", "  ")
 					.contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Request validation failed")))
+				.andExpect(jsonPath("$.fieldErrors.idempotencyKey").exists());
 		mockMvc.perform(post("/api/reservations").header("Idempotency-Key", "k".repeat(256))
 					.contentType(MediaType.APPLICATION_JSON).content(body))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Request validation failed")))
+				.andExpect(jsonPath("$.fieldErrors.idempotencyKey").exists());
 	}
 
 	@Test
@@ -231,9 +254,14 @@ class ReservationControllerTests {
 	@Test
 	void returnsNotFoundForUnknownReservationDetailsAndCancellation() throws Exception {
 		mockMvc.perform(get("/api/reservations/{id}", Long.MAX_VALUE))
-				.andExpect(status().isNotFound());
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status", is(404)))
+				.andExpect(jsonPath("$.message", is("Reservation not found")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
 		mockMvc.perform(delete("/api/reservations/{id}", Long.MAX_VALUE))
-				.andExpect(status().isNotFound());
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status", is(404)))
+				.andExpect(jsonPath("$.message", is("Reservation not found")));
 	}
 
 	@Test
