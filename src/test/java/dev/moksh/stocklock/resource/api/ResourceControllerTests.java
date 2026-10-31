@@ -3,6 +3,7 @@ package dev.moksh.stocklock.resource.api;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -42,11 +43,42 @@ class ResourceControllerTests {
     }
 
     @Test
-    void rejectsMissingNameAndQuantity() throws Exception {
+	void rejectsMissingResourceName() throws Exception {
         mockMvc.perform(post("/api/resources")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
+					.content("{\"quantity\":1}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Request validation failed")))
+				.andExpect(jsonPath("$.fieldErrors.name").exists());
+	}
+
+	@Test
+	void rejectsMissingResourceQuantity() throws Exception {
+		mockMvc.perform(post("/api/resources")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"Desk\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.quantity").exists());
+	}
+
+	@Test
+	void rejectsBlankOrOversizedResourceNameAndOversizedDescription() throws Exception {
+		mockMvc.perform(post("/api/resources")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"  \",\"quantity\":1}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.name").exists());
+		mockMvc.perform(post("/api/resources")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"%s\",\"quantity\":1}".formatted("n".repeat(121))))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.name").exists());
+		mockMvc.perform(post("/api/resources")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"Desk\",\"description\":\"%s\",\"quantity\":1}"
+							.formatted("d".repeat(501))))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.description").exists());
     }
 
     @Test
@@ -56,7 +88,17 @@ class ResourceControllerTests {
                         .content("""
                                 {"name":"Desk","quantity":-1}
                                 """))
-                .andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.quantity").exists());
+	}
+
+	@Test
+	void acceptsZeroInitialAvailability() throws Exception {
+		mockMvc.perform(post("/api/resources")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"Empty shelf\",\"quantity\":0}"))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.quantity", is(0)));
     }
 
     @Test
@@ -86,12 +128,52 @@ class ResourceControllerTests {
     @Test
     void returnsNotFoundForUnknownResourceId() throws Exception {
         mockMvc.perform(get("/api/resources/{id}", Long.MAX_VALUE))
-                .andExpect(status().isNotFound());
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status", is(404)))
+				.andExpect(jsonPath("$.error", is("Not Found")))
+				.andExpect(jsonPath("$.message", is("Resource not found")))
+				.andExpect(jsonPath("$.path", is("/api/resources/9223372036854775807")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
     }
 
     @Test
     void returnsNotFoundForUnknownAvailabilityId() throws Exception {
         mockMvc.perform(get("/api/resources/{id}/availability", Long.MAX_VALUE))
-                .andExpect(status().isNotFound());
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status", is(404)))
+				.andExpect(jsonPath("$.error", is("Not Found")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
+	}
+
+	@Test
+	void returnsStandardErrorsForMalformedBodiesAndInvalidPathVariables() throws Exception {
+		mockMvc.perform(post("/api/resources").contentType(MediaType.APPLICATION_JSON).content("{\"name\":"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.timestamp").isString())
+				.andExpect(jsonPath("$.status", is(400)))
+				.andExpect(jsonPath("$.error", is("Bad Request")))
+				.andExpect(jsonPath("$.message", is("Invalid request body")))
+				.andExpect(jsonPath("$.path", is("/api/resources")))
+				.andExpect(jsonPath("$.fieldErrors").isMap());
+		mockMvc.perform(post("/api/resources").contentType(MediaType.APPLICATION_JSON)
+					.content("{\"name\":\"Desk\",\"quantity\":\"invalid\"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Invalid request body")));
+		mockMvc.perform(get("/api/resources/not-a-number"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message", is("Invalid request parameter")))
+				.andExpect(jsonPath("$.path", is("/api/resources/not-a-number")));
+	}
+
+	@Test
+	void returnsStandardErrorsForUnsupportedMethodAndMediaType() throws Exception {
+		mockMvc.perform(put("/api/resources"))
+				.andExpect(status().isMethodNotAllowed())
+				.andExpect(jsonPath("$.status", is(405)))
+				.andExpect(jsonPath("$.message", is("HTTP method not allowed")));
+		mockMvc.perform(post("/api/resources").contentType(MediaType.TEXT_PLAIN).content("resource"))
+				.andExpect(status().isUnsupportedMediaType())
+				.andExpect(jsonPath("$.status", is(415)))
+				.andExpect(jsonPath("$.message", is("Unsupported media type")));
     }
 }
