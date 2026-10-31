@@ -12,4 +12,9 @@ public interface ResourceRepository extends JpaRepository<Resource, Long> {
 	@Query("update Resource resource set resource.quantity = resource.quantity - :quantity "
 			+ "where resource.id = :resourceId and resource.quantity >= :quantity")
 	int decrementAvailableQuantity(@Param("resourceId") Long resourceId, @Param("quantity") int quantity);
+
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("update Resource resource set resource.quantity = resource.quantity + :quantity "
+			+ "where resource.id = :resourceId")
+	int incrementAvailableQuantity(@Param("resourceId") Long resourceId, @Param("quantity") int quantity);
 }

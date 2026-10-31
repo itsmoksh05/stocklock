@@ -1,15 +1,17 @@
 package dev.moksh.stocklock.reservation.service;
 
 import dev.moksh.stocklock.reservation.domain.Reservation;
+import dev.moksh.stocklock.reservation.domain.ReservationStatus;
 import dev.moksh.stocklock.reservation.dto.CreateReservationRequest;
+import dev.moksh.stocklock.reservation.dto.ReservationDetailsResponse;
 import dev.moksh.stocklock.reservation.dto.ReservationResponse;
 import dev.moksh.stocklock.reservation.persistence.ReservationRepository;
 import dev.moksh.stocklock.resource.persistence.ResourceRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -34,6 +36,44 @@ public class ReservationService {
 					.map(reservation -> replayOrReject(reservation, request))
 					.orElseThrow(() -> exception);
 		}
+	}
+
+	public ReservationDetailsResponse getById(Long id) {
+		Reservation reservation = reservationRepository.findById(id)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+		return toDetailsResponse(reservation);
+	}
+
+	public ReservationDetailsResponse cancel(Long id) {
+		return transactionTemplate.execute(status -> cancelInTransaction(id));
+	}
+
+	private ReservationDetailsResponse cancelInTransaction(Long id) {
+		Reservation reservation = reservationRepository.findById(id)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+
+		int updatedRows = reservationRepository.cancelIfActive(
+				id, ReservationStatus.ACTIVE, ReservationStatus.CANCELLED);
+		if (updatedRows == 1) {
+			int restoredRows = resourceRepository.incrementAvailableQuantity(
+					reservation.getResourceId(), reservation.getQuantity());
+			if (restoredRows != 1) {
+				throw new IllegalStateException("Could not restore resource availability for reservation " + id);
+			}
+		} else if (updatedRows == 0) {
+			reservation = reservationRepository.findById(id)
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+			if (reservation.getStatus() == ReservationStatus.CANCELLED) {
+				return toDetailsResponse(reservation);
+			}
+			throw new IllegalStateException("Reservation status could not be updated");
+		} else {
+			throw new IllegalStateException("Unexpected reservation update count: " + updatedRows);
+		}
+
+		Reservation updatedReservation = reservationRepository.findById(id)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+		return toDetailsResponse(updatedReservation);
 	}
 
 	private ReservationResponse createInTransaction(CreateReservationRequest request, String idempotencyKey) {
@@ -68,5 +108,10 @@ public class ReservationService {
 
 	private ReservationResponse toResponse(Reservation reservation) {
 		return new ReservationResponse(reservation.getId(), reservation.getResourceId(), reservation.getQuantity());
+	}
+
+	private ReservationDetailsResponse toDetailsResponse(Reservation reservation) {
+		return new ReservationDetailsResponse(reservation.getId(), reservation.getResourceId(),
+				reservation.getQuantity(), reservation.getStatus());
 	}
 }

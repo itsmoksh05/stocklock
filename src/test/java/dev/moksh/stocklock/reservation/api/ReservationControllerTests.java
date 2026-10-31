@@ -2,6 +2,8 @@ package dev.moksh.stocklock.reservation.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -209,6 +211,120 @@ class ReservationControllerTests {
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(17);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountBefore + 1);
+	}
+
+	@Test
+	void retrievesExistingReservationDetails() throws Exception {
+		MvcResult created = createReservation(
+				resourceRepository.saveAndFlush(new Resource("Room", null, 10)).getId(), 2, "details-key")
+				.andExpect(status().isCreated()).andReturn();
+		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+
+		mockMvc.perform(get("/api/reservations/{id}", reservationId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is(reservationId)))
+				.andExpect(jsonPath("$.resourceId").isNumber())
+				.andExpect(jsonPath("$.quantity", is(2)))
+				.andExpect(jsonPath("$.status", is("ACTIVE")));
+	}
+
+	@Test
+	void returnsNotFoundForUnknownReservationDetailsAndCancellation() throws Exception {
+		mockMvc.perform(get("/api/reservations/{id}", Long.MAX_VALUE))
+				.andExpect(status().isNotFound());
+		mockMvc.perform(delete("/api/reservations/{id}", Long.MAX_VALUE))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void cancellationRestoresQuantityAndKeepsReservationWithCancelledStatus() throws Exception {
+		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
+		MvcResult created = createReservation(resource.getId(), 3, "cancel-key")
+				.andExpect(status().isCreated()).andReturn();
+		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+		long reservationCount = reservationRepository.count();
+		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
+
+		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id", is(reservationId)))
+				.andExpect(jsonPath("$.resourceId", is(resource.getId().intValue())))
+				.andExpect(jsonPath("$.quantity", is(3)))
+				.andExpect(jsonPath("$.status", is("CANCELLED")));
+
+		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
+		assertThat(reservationRepository.count()).isEqualTo(reservationCount);
+		mockMvc.perform(get("/api/reservations/{id}", reservationId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("CANCELLED")));
+	}
+
+	@Test
+	void repeatedCancellationDoesNotRestoreQuantityAgain() throws Exception {
+		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
+		int reservationId = JsonPath.read(createReservation(resource.getId(), 4, "repeat-cancel-key")
+				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+
+		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("CANCELLED")));
+		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status", is("CANCELLED")));
+
+		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
+	}
+
+	@Test
+	void replayAfterCancellationReturnsOriginalReservationWithoutChangingAvailability() throws Exception {
+		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
+		MvcResult created = createReservation(resource.getId(), 3, "cancelled-replay-key")
+				.andExpect(status().isCreated()).andReturn();
+		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+		mockMvc.perform(delete("/api/reservations/{id}", reservationId)).andExpect(status().isOk());
+		long reservationCount = reservationRepository.count();
+
+		MvcResult replay = createReservation(resource.getId(), 3, "cancelled-replay-key")
+				.andExpect(status().isCreated()).andReturn();
+
+		assertThat(JsonPath.<Integer>read(replay.getResponse().getContentAsString(), "$.id")).isEqualTo(reservationId);
+		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
+		assertThat(reservationRepository.count()).isEqualTo(reservationCount);
+	}
+
+	@Test
+	void concurrentCancellationRestoresQuantityOnlyOnce() throws Exception {
+		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
+		int reservationId = JsonPath.read(createReservation(resource.getId(), 4, "concurrent-cancel-key")
+				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		Callable<MvcResult> request = () -> {
+			ready.countDown();
+			if (!start.await(5, TimeUnit.SECONDS)) {
+				throw new IllegalStateException("Concurrent cancellation start timed out");
+			}
+			return mockMvc.perform(delete("/api/reservations/{id}", reservationId)).andReturn();
+		};
+
+		try {
+			Future<MvcResult> firstFuture = executor.submit(request);
+			Future<MvcResult> secondFuture = executor.submit(request);
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+			MvcResult first = firstFuture.get(20, TimeUnit.SECONDS);
+			MvcResult second = secondFuture.get(20, TimeUnit.SECONDS);
+			assertThat(first.getResponse().getStatus()).isEqualTo(200);
+			assertThat(second.getResponse().getStatus()).isEqualTo(200);
+			assertThat(JsonPath.<String>read(first.getResponse().getContentAsString(), "$.status")).isEqualTo("CANCELLED");
+			assertThat(JsonPath.<String>read(second.getResponse().getContentAsString(), "$.status")).isEqualTo("CANCELLED");
+		} finally {
+			start.countDown();
+			executor.shutdownNow();
+		}
+
+		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
 	}
 
 	private ResultActions createReservation(Long resourceId, int quantity,

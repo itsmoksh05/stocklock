@@ -2,6 +2,8 @@ package dev.moksh.stocklock.reservation.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -23,6 +25,10 @@ public class Reservation {
 
 	@Column(name = "idempotency_key", nullable = false, length = 255, unique = true)
 	private String idempotencyKey;
+
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 20)
+	private ReservationStatus status = ReservationStatus.ACTIVE;
 
 	protected Reservation() {
 	}
@@ -47,5 +53,9 @@ public class Reservation {
 
 	public String getIdempotencyKey() {
 		return idempotencyKey;
+	}
+
+	public ReservationStatus getStatus() {
+		return status;
 	}
 }
