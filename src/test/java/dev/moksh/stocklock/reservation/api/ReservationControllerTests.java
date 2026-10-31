@@ -128,9 +128,16 @@ class ReservationControllerTests {
 		long reservationCountBefore = reservationRepository.count();
 
 		MvcResult first = createReservation(resource.getId(), 3, "replay-key")
-				.andExpect(status().isCreated()).andReturn();
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.success", is(true)))
+				.andExpect(jsonPath("$.error").doesNotExist())
+				.andReturn();
 		MvcResult replay = createReservation(resource.getId(), 3, "replay-key")
-				.andExpect(status().isCreated()).andReturn();
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.success", is(true)))
+				.andExpect(jsonPath("$.data.id").isNumber())
+				.andExpect(jsonPath("$.error").doesNotExist())
+				.andReturn();
 
 		assertThat(JsonPath.<Integer>read(replay.getResponse().getContentAsString(), "$.data.id"))
 				.isEqualTo(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.data.id"));
@@ -249,6 +256,8 @@ class ReservationControllerTests {
 
 		mockMvc.perform(get("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success", is(true)))
+				.andExpect(jsonPath("$.error").doesNotExist())
 				.andExpect(jsonPath("$.data.id", is(reservationId)))
 				.andExpect(jsonPath("$.data.resourceId").isNumber())
 				.andExpect(jsonPath("$.data.quantity", is(2)))
@@ -279,6 +288,8 @@ class ReservationControllerTests {
 
 		mockMvc.perform(delete("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.success", is(true)))
+				.andExpect(jsonPath("$.error").doesNotExist())
 				.andExpect(jsonPath("$.data.id", is(reservationId)))
 				.andExpect(jsonPath("$.data.resourceId", is(resource.getId().intValue())))
 				.andExpect(jsonPath("$.data.quantity", is(3)))

@@ -110,6 +110,8 @@ class ResourceControllerTests {
 
         mockMvc.perform(get("/api/v1/resources/{id}", saved.getId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.error").doesNotExist())
                 .andExpect(jsonPath("$.data.id", is(saved.getId().intValue())))
                 .andExpect(jsonPath("$.data.name", is("Conference Room")))
                 .andExpect(jsonPath("$.data.description", is("Meeting room on floor 2")))
@@ -123,6 +125,8 @@ class ResourceControllerTests {
 
         mockMvc.perform(get("/api/v1/resources/{id}/availability", saved.getId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.error").doesNotExist())
                 .andExpect(jsonPath("$.data.resourceId", is(saved.getId().intValue())))
                 .andExpect(jsonPath("$.data.availableQuantity", is(10)));
     }
@@ -131,6 +135,8 @@ class ResourceControllerTests {
     void returnsNotFoundForUnknownResourceId() throws Exception {
         mockMvc.perform(get("/api/v1/resources/{id}", Long.MAX_VALUE))
 				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.success", is(false)))
+				.andExpect(jsonPath("$.data").doesNotExist())
 				.andExpect(jsonPath("$.error.status", is(404)))
 				.andExpect(jsonPath("$.error.error", is("Not Found")))
 				.andExpect(jsonPath("$.error.message", is("Resource not found")))
@@ -142,6 +148,8 @@ class ResourceControllerTests {
     void returnsNotFoundForUnknownAvailabilityId() throws Exception {
         mockMvc.perform(get("/api/v1/resources/{id}/availability", Long.MAX_VALUE))
 				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.success", is(false)))
+				.andExpect(jsonPath("$.data").doesNotExist())
 				.andExpect(jsonPath("$.error.status", is(404)))
 				.andExpect(jsonPath("$.error.error", is("Not Found")))
 				.andExpect(jsonPath("$.error.fieldErrors").isMap());
