@@ -58,26 +58,24 @@ class OpenApiDocumentationTests {
 				.andExpect(content().string(containsString("CANCELLED")))
 				.andExpect(jsonPath("$.components.schemas.ApiResponseResourceResponse.properties.data.$ref",
 						is("#/components/schemas/ResourceResponse")))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseResourceResponse.properties.error.nullable", is(true)))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseResourceResponse.properties.error.allOf[0].$ref",
+				.andExpect(jsonPath("$.components.schemas.ApiResponseResourceResponse.properties.error.$ref",
 						is("#/components/schemas/ApiErrorResponse")))
 				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationResponse.properties.data.$ref",
 						is("#/components/schemas/ReservationResponse")))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationResponse.properties.error.nullable", is(true)))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationResponse.properties.error.allOf[0].$ref",
+				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationResponse.properties.error.$ref",
 						is("#/components/schemas/ApiErrorResponse")))
 				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationDetailsResponse.properties.data.$ref",
 						is("#/components/schemas/ReservationDetailsResponse")))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationDetailsResponse.properties.error.nullable", is(true)))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationDetailsResponse.properties.error.allOf[0].$ref",
+				.andExpect(jsonPath("$.components.schemas.ApiResponseReservationDetailsResponse.properties.error.$ref",
 						is("#/components/schemas/ApiErrorResponse")))
-				.andExpect(jsonPath("$.components.schemas.ApiResponseResourceAvailabilityResponse.properties.error.nullable", is(true)))
+				.andExpect(jsonPath("$.components.schemas.ApiResponseResourceAvailabilityResponse.properties.error.$ref",
+						is("#/components/schemas/ApiErrorResponse")))
 				.andExpect(jsonPath("$.components.schemas.CreateResourceRequest.properties.name.maxLength", is(120)))
 				.andExpect(jsonPath("$.components.schemas.CreateResourceRequest.properties.quantity.minimum", is(0)))
 				.andExpect(jsonPath("$.components.schemas.CreateReservationRequest.properties.quantity.minimum", is(1)))
 				.andExpect(jsonPath("$.components.schemas.ApiResponse.properties.data.nullable", is(true)))
-				.andExpect(jsonPath("$.components.schemas.ApiResponse.properties.error.allOf[0].$ref", is("#/components/schemas/ApiErrorResponse")))
-				.andExpect(jsonPath("$.components.schemas.ApiResponse.properties.error.nullable", is(true)))
+				.andExpect(jsonPath("$.components.schemas.ApiResponse.properties.error.$ref", is("#/components/schemas/ApiErrorResponse")))
+				.andExpect(jsonPath("$.components.schemas.ApiErrorResponse.nullable", is(true)))
 				.andExpect(jsonPath("$.components.schemas.ReservationDetailsResponse.properties.status.enum[0]", is("ACTIVE")))
 				.andExpect(jsonPath("$.components.schemas.ReservationDetailsResponse.properties.status.enum[1]", is("CANCELLED")));
 	}

@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Safe error details. Field errors are empty when the failure is not field validation.")
+@Schema(description = "Safe error details. Field errors are empty when the failure is not field validation.", nullable = true)
 public record ApiErrorResponse(
 		@Schema(description = "Time the error was produced in UTC.", example = "2026-01-01T12:00:00Z") Instant timestamp,
 		@Schema(description = "HTTP status code.", example = "400") int status,
