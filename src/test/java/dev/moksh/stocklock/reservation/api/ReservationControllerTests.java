@@ -79,7 +79,7 @@ class ReservationControllerTests {
 
 	@Test
 	void returnsNotFoundForUnknownResource() throws Exception {
-		mockMvc.perform(post("/api/reservations")
+		mockMvc.perform(post("/api/v1/reservations")
 					.header("Idempotency-Key", "unknown-resource-key")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("""
@@ -94,7 +94,7 @@ class ReservationControllerTests {
 	@Test
 	void rejectsZeroOrNegativeQuantities() throws Exception {
 		for (int quantity : new int[] {0, -1}) {
-			mockMvc.perform(post("/api/reservations")
+			mockMvc.perform(post("/api/v1/reservations")
 						.header("Idempotency-Key", "invalid-quantity-" + quantity)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
@@ -102,7 +102,7 @@ class ReservationControllerTests {
 								""".formatted(quantity)))
 					.andExpect(status().isBadRequest());
 		}
-		mockMvc.perform(post("/api/reservations")
+		mockMvc.perform(post("/api/v1/reservations")
 					.header("Idempotency-Key", "missing-quantity-key")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{\"resourceId\":1}"))
@@ -114,7 +114,7 @@ class ReservationControllerTests {
 	void rejectsMissingOrNonpositiveResourceId() throws Exception {
 		for (String body : new String[] {
 				"{\"quantity\":1}", "{\"resourceId\":0,\"quantity\":1}", "{\"resourceId\":-1,\"quantity\":1}"}) {
-			mockMvc.perform(post("/api/reservations")
+			mockMvc.perform(post("/api/v1/reservations")
 						.header("Idempotency-Key", "invalid-resource-" + body.hashCode())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(body))
@@ -187,16 +187,16 @@ class ReservationControllerTests {
 	@Test
 	void rejectsMissingBlankAndOversizedIdempotencyKeys() throws Exception {
 		String body = "{\"resourceId\":1,\"quantity\":1}";
-		mockMvc.perform(post("/api/reservations").contentType(MediaType.APPLICATION_JSON).content(body))
+		mockMvc.perform(post("/api/v1/reservations").contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.message", is("Required request header is missing")))
 				.andExpect(jsonPath("$.error.fieldErrors").isMap());
-		mockMvc.perform(post("/api/reservations").header("Idempotency-Key", "  ")
+		mockMvc.perform(post("/api/v1/reservations").header("Idempotency-Key", "  ")
 					.contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.message", is("Request validation failed")))
 				.andExpect(jsonPath("$.error.fieldErrors.idempotencyKey").exists());
-		mockMvc.perform(post("/api/reservations").header("Idempotency-Key", "k".repeat(256))
+		mockMvc.perform(post("/api/v1/reservations").header("Idempotency-Key", "k".repeat(256))
 					.contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.message", is("Request validation failed")))
@@ -247,7 +247,7 @@ class ReservationControllerTests {
 				.andExpect(status().isCreated()).andReturn();
 		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.data.id");
 
-		mockMvc.perform(get("/api/reservations/{id}", reservationId))
+		mockMvc.perform(get("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.id", is(reservationId)))
 				.andExpect(jsonPath("$.data.resourceId").isNumber())
@@ -257,12 +257,12 @@ class ReservationControllerTests {
 
 	@Test
 	void returnsNotFoundForUnknownReservationDetailsAndCancellation() throws Exception {
-		mockMvc.perform(get("/api/reservations/{id}", Long.MAX_VALUE))
+		mockMvc.perform(get("/api/v1/reservations/{id}", Long.MAX_VALUE))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.error.status", is(404)))
 				.andExpect(jsonPath("$.error.message", is("Reservation not found")))
 				.andExpect(jsonPath("$.error.fieldErrors").isMap());
-		mockMvc.perform(delete("/api/reservations/{id}", Long.MAX_VALUE))
+		mockMvc.perform(delete("/api/v1/reservations/{id}", Long.MAX_VALUE))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.error.status", is(404)))
 				.andExpect(jsonPath("$.error.message", is("Reservation not found")));
@@ -277,7 +277,7 @@ class ReservationControllerTests {
 		long reservationCount = reservationRepository.count();
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 
-		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
+		mockMvc.perform(delete("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.id", is(reservationId)))
 				.andExpect(jsonPath("$.data.resourceId", is(resource.getId().intValue())))
@@ -286,7 +286,7 @@ class ReservationControllerTests {
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCount);
-		mockMvc.perform(get("/api/reservations/{id}", reservationId))
+		mockMvc.perform(get("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
 	}
@@ -297,10 +297,10 @@ class ReservationControllerTests {
 		int reservationId = JsonPath.read(createReservation(resource.getId(), 4, "repeat-cancel-key")
 				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.data.id");
 
-		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
+		mockMvc.perform(delete("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
-		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
+		mockMvc.perform(delete("/api/v1/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
 
@@ -313,7 +313,7 @@ class ReservationControllerTests {
 		MvcResult created = createReservation(resource.getId(), 3, "cancelled-replay-key")
 				.andExpect(status().isCreated()).andReturn();
 		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.data.id");
-		mockMvc.perform(delete("/api/reservations/{id}", reservationId)).andExpect(status().isOk());
+		mockMvc.perform(delete("/api/v1/reservations/{id}", reservationId)).andExpect(status().isOk());
 		long reservationCount = reservationRepository.count();
 
 		MvcResult replay = createReservation(resource.getId(), 3, "cancelled-replay-key")
@@ -337,7 +337,7 @@ class ReservationControllerTests {
 			if (!start.await(5, TimeUnit.SECONDS)) {
 				throw new IllegalStateException("Concurrent cancellation start timed out");
 			}
-			return mockMvc.perform(delete("/api/reservations/{id}", reservationId)).andReturn();
+			return mockMvc.perform(delete("/api/v1/reservations/{id}", reservationId)).andReturn();
 		};
 
 		try {
@@ -361,7 +361,7 @@ class ReservationControllerTests {
 
 	private ResultActions createReservation(Long resourceId, int quantity,
 			String idempotencyKey) throws Exception {
-		return mockMvc.perform(post("/api/reservations")
+		return mockMvc.perform(post("/api/v1/reservations")
 				.header("Idempotency-Key", idempotencyKey)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
