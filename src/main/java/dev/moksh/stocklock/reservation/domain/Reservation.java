@@ -21,12 +21,16 @@ public class Reservation {
 	@Column(nullable = false)
 	private int quantity;
 
+	@Column(name = "idempotency_key", nullable = false, length = 255, unique = true)
+	private String idempotencyKey;
+
 	protected Reservation() {
 	}
 
-	public Reservation(Long resourceId, int quantity) {
+	public Reservation(Long resourceId, int quantity, String idempotencyKey) {
 		this.resourceId = resourceId;
 		this.quantity = quantity;
+		this.idempotencyKey = idempotencyKey;
 	}
 
 	public Long getId() {
@@ -39,5 +43,9 @@ public class Reservation {
 
 	public int getQuantity() {
 		return quantity;
+	}
+
+	public String getIdempotencyKey() {
+		return idempotencyKey;
 	}
 }
