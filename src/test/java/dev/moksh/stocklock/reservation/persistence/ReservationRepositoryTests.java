@@ -26,7 +26,8 @@ class ReservationRepositoryTests {
 		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 5));
 		reservationRepository.saveAndFlush(new Reservation(resource.getId(), 1, "duplicate-key"));
 
+		Reservation reservation = new Reservation(resource.getId(), 1, "duplicate-key");
 		assertThrows(DataIntegrityViolationException.class,
-				() -> reservationRepository.saveAndFlush(new Reservation(resource.getId(), 1, "duplicate-key")));
+				() -> reservationRepository.saveAndFlush(reservation));
 	}
 }

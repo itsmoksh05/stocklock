@@ -1,5 +1,6 @@
 package dev.moksh.stocklock.resource.api;
 
+import dev.moksh.stocklock.common.api.ApiResponse;
 import dev.moksh.stocklock.resource.dto.CreateResourceRequest;
 import dev.moksh.stocklock.resource.dto.ResourceAvailabilityResponse;
 import dev.moksh.stocklock.resource.dto.ResourceResponse;
@@ -15,7 +16,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/resources")
+@RequestMapping("/api/v1/resources")
 public class ResourceController {
 
 	private final ResourceService resourceService;
@@ -26,17 +27,17 @@ public class ResourceController {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	public ResourceResponse create(@Valid @RequestBody CreateResourceRequest request) {
-		return resourceService.create(request);
+	public ApiResponse<ResourceResponse> create(@Valid @RequestBody CreateResourceRequest request) {
+		return ApiResponse.success(resourceService.create(request));
 	}
 
 	@GetMapping("/{id}")
-	public ResourceResponse getById(@PathVariable("id") Long id) {
-		return resourceService.getById(id);
+	public ApiResponse<ResourceResponse> getById(@PathVariable("id") Long id) {
+		return ApiResponse.success(resourceService.getById(id));
 	}
 
 	@GetMapping("/{id}/availability")
-	public ResourceAvailabilityResponse getAvailability(@PathVariable("id") Long id) {
-		return resourceService.getAvailability(id);
+	public ApiResponse<ResourceAvailabilityResponse> getAvailability(@PathVariable("id") Long id) {
+		return ApiResponse.success(resourceService.getAvailability(id));
 	}
 }

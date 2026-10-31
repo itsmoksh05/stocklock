@@ -7,6 +7,8 @@ import dev.moksh.stocklock.reservation.dto.ReservationDetailsResponse;
 import dev.moksh.stocklock.reservation.dto.ReservationResponse;
 import dev.moksh.stocklock.reservation.persistence.ReservationRepository;
 import dev.moksh.stocklock.resource.persistence.ResourceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ReservationService {
+	private static final Logger logger = LoggerFactory.getLogger(ReservationService.class);
 
 	private final ResourceRepository resourceRepository;
 	private final ReservationRepository reservationRepository;
@@ -40,7 +43,10 @@ public class ReservationService {
 
 	public ReservationDetailsResponse getById(Long id) {
 		Reservation reservation = reservationRepository.findById(id)
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+				.orElseThrow(() -> {
+					logger.warn("Reservation not found id={}", id);
+					return new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found");
+				});
 		return toDetailsResponse(reservation);
 	}
 
@@ -50,25 +56,33 @@ public class ReservationService {
 
 	private ReservationDetailsResponse cancelInTransaction(Long id) {
 		Reservation reservation = reservationRepository.findById(id)
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+				.orElseThrow(() -> {
+					logger.warn("Reservation not found for cancellation id={}", id);
+					return new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found");
+				});
 
 		int updatedRows = reservationRepository.cancelIfActive(
 				id, ReservationStatus.ACTIVE, ReservationStatus.CANCELLED);
-		if (updatedRows == 1) {
-			int restoredRows = resourceRepository.incrementAvailableQuantity(
-					reservation.getResourceId(), reservation.getQuantity());
-			if (restoredRows != 1) {
-				throw new IllegalStateException("Could not restore resource availability for reservation " + id);
+		switch (updatedRows) {
+			case 1 -> {
+				int restoredRows = resourceRepository.incrementAvailableQuantity(
+						reservation.getResourceId(), reservation.getQuantity());
+				if (restoredRows != 1) {
+					throw new IllegalStateException("Could not restore resource availability for reservation " + id);
+				}
+				logger.info("Cancelled reservation id={} resourceId={} quantity={}", id,
+						reservation.getResourceId(), reservation.getQuantity());
 			}
-		} else if (updatedRows == 0) {
-			reservation = reservationRepository.findById(id)
-					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
-			if (reservation.getStatus() == ReservationStatus.CANCELLED) {
-				return toDetailsResponse(reservation);
+			case 0 -> {
+				reservation = reservationRepository.findById(id)
+						.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+				if (reservation.getStatus() == ReservationStatus.CANCELLED) {
+					logger.debug("Reservation already cancelled id={}", id);
+					return toDetailsResponse(reservation);
+				}
+				throw new IllegalStateException("Reservation status could not be updated");
 			}
-			throw new IllegalStateException("Reservation status could not be updated");
-		} else {
-			throw new IllegalStateException("Unexpected reservation update count: " + updatedRows);
+			default -> throw new IllegalStateException("Unexpected reservation update count: " + updatedRows);
 		}
 
 		Reservation updatedReservation = reservationRepository.findById(id)
@@ -79,6 +93,7 @@ public class ReservationService {
 	private ReservationResponse createInTransaction(CreateReservationRequest request, String idempotencyKey) {
 		Reservation existing = reservationRepository.findByIdempotencyKey(idempotencyKey).orElse(null);
 		if (existing != null) {
+			logger.debug("Replayed idempotent reservation id={}", existing.getId());
 			return replayOrReject(existing, request);
 		}
 
@@ -86,21 +101,29 @@ public class ReservationService {
 		if (updatedRows == 0) {
 			Reservation concurrentReservation = reservationRepository.findByIdempotencyKey(idempotencyKey).orElse(null);
 			if (concurrentReservation != null) {
+				logger.debug("Replayed concurrent idempotent reservation id={}", concurrentReservation.getId());
 				return replayOrReject(concurrentReservation, request);
 			}
 			if (!resourceRepository.existsById(request.resourceId())) {
+				logger.warn("Reservation requested for missing resource id={}", request.resourceId());
 				throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
 			}
+			logger.warn("Insufficient quantity for reservation resourceId={} requestedQuantity={}",
+					request.resourceId(), request.quantity());
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient available quantity");
 		}
 
 		Reservation reservation = reservationRepository.saveAndFlush(
 				new Reservation(request.resourceId(), request.quantity(), idempotencyKey));
+		logger.info("Created reservation id={} resourceId={} quantity={}", reservation.getId(),
+				reservation.getResourceId(), reservation.getQuantity());
 		return toResponse(reservation);
 	}
 
 	private ReservationResponse replayOrReject(Reservation reservation, CreateReservationRequest request) {
 		if (!reservation.getResourceId().equals(request.resourceId()) || reservation.getQuantity() != request.quantity()) {
+			logger.warn("Idempotency request mismatch reservationId={} resourceId={} requestedResourceId={}",
+					reservation.getId(), reservation.getResourceId(), request.resourceId());
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency key was already used with a different request");
 		}
 		return toResponse(reservation);

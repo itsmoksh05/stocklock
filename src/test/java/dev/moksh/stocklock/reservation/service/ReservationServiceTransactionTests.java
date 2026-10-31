@@ -20,25 +20,24 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @ActiveProfiles("test")
 class ReservationServiceTransactionTests {
 
-	@Autowired
-	private ResourceRepository resourceRepository;
+    @Autowired
+    private ResourceRepository resourceRepository;
 
-	@Autowired
-	private ReservationService reservationService;
+    @Autowired
+    private ReservationService reservationService;
 
-	@MockitoBean
-	private ReservationRepository reservationRepository;
+    @MockitoBean
+    private ReservationRepository reservationRepository;
 
-	@Test
-	void rollsBackQuantityDecrementWhenReservationPersistenceFails() {
-		Resource resource = resourceRepository.saveAndFlush(new Resource("Projector", null, 5));
-		when(reservationRepository.saveAndFlush(any(Reservation.class)))
-				.thenThrow(new IllegalStateException("Simulated reservation persistence failure"));
+    @Test
+    void rollsBackQuantityDecrementWhenReservationPersistenceFails() {
+        Resource resource = resourceRepository.saveAndFlush(new Resource("Projector", null, 5));
+        when(reservationRepository.saveAndFlush(any(Reservation.class)))
+                .thenThrow(new IllegalStateException("Simulated reservation persistence failure"));
+        CreateReservationRequest request = new CreateReservationRequest(resource.getId(), 2);
+        assertThatThrownBy(() -> reservationService.create(request, "rollback-test-key"))
+                .isInstanceOf(IllegalStateException.class);
 
-		assertThatThrownBy(() -> reservationService.create(
-				new CreateReservationRequest(resource.getId(), 2), "rollback-test-key"))
-				.isInstanceOf(IllegalStateException.class);
-
-		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(5);
-	}
+        assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(5);
+    }
 }

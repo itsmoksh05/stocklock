@@ -1,5 +1,6 @@
 package dev.moksh.stocklock.reservation.api;
 
+import dev.moksh.stocklock.common.api.ApiResponse;
 import dev.moksh.stocklock.reservation.dto.CreateReservationRequest;
 import dev.moksh.stocklock.reservation.dto.ReservationDetailsResponse;
 import dev.moksh.stocklock.reservation.dto.ReservationResponse;
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/reservations")
+@RequestMapping("/api/v1/reservations")
 public class ReservationController {
 
 	private final ReservationService reservationService;
@@ -30,19 +31,19 @@ public class ReservationController {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	public ReservationResponse create(
+	public ApiResponse<ReservationResponse> create(
 			@Valid @RequestBody CreateReservationRequest request,
 			@RequestHeader("Idempotency-Key") @NotBlank @Size(max = 255) String idempotencyKey) {
-		return reservationService.create(request, idempotencyKey);
+		return ApiResponse.success(reservationService.create(request, idempotencyKey));
 	}
 
 	@GetMapping("/{id}")
-	public ReservationDetailsResponse getById(@PathVariable("id") Long id) {
-		return reservationService.getById(id);
+	public ApiResponse<ReservationDetailsResponse> getById(@PathVariable("id") Long id) {
+		return ApiResponse.success(reservationService.getById(id));
 	}
 
 	@DeleteMapping("/{id}")
-	public ReservationDetailsResponse cancel(@PathVariable("id") Long id) {
-		return reservationService.cancel(id);
+	public ApiResponse<ReservationDetailsResponse> cancel(@PathVariable("id") Long id) {
+		return ApiResponse.success(reservationService.cancel(id));
 	}
 }
