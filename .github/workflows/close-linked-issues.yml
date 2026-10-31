@@ -1,0 +1,126 @@
+name: Close linked issues when PR is merged
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  close-linked-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close issues linked to the merged pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pullNumber = context.payload.pull_request.number;
+
+            const query = `
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 100) {
+                      nodes {
+                        number
+                        repository {
+                          nameWithOwner
+                        }
+                      }
+                    }
+                    timelineItems(first: 100, itemTypes: [CONNECTED_EVENT]) {
+                      nodes {
+                        ... on ConnectedEvent {
+                          source {
+                            __typename
+                            ... on Issue {
+                              number
+                              repository {
+                                nameWithOwner
+                              }
+                            }
+                          }
+                          subject {
+                            __typename
+                            ... on Issue {
+                              number
+                              repository {
+                                nameWithOwner
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query, {
+              owner,
+              repo,
+              number: pullNumber
+            });
+
+            const pullRequest = result.repository?.pullRequest;
+            if (!pullRequest) {
+              throw new Error(`Could not load pull request #${pullNumber}.`);
+            }
+
+            const linkedIssueNumbers = new Set();
+            const addSameRepositoryIssue = (candidate) => {
+              if (
+                candidate?.__typename === "Issue" &&
+                candidate.repository?.nameWithOwner === `${owner}/${repo}`
+              ) {
+                linkedIssueNumbers.add(candidate.number);
+              }
+            };
+
+            for (const issue of pullRequest.closingIssuesReferences.nodes) {
+              addSameRepositoryIssue({ ...issue, __typename: "Issue" });
+            }
+
+            for (const event of pullRequest.timelineItems.nodes) {
+              addSameRepositoryIssue(event.source);
+              addSameRepositoryIssue(event.subject);
+            }
+
+            if (linkedIssueNumbers.size === 0) {
+              core.info(`No linked issues found for merged PR #${pullNumber}; nothing to close.`);
+              return;
+            }
+
+            for (const issueNumber of [...linkedIssueNumbers].sort((a, b) => a - b)) {
+              const { data: issue } = await github.rest.issues.get({
+                owner,
+                repo,
+                issue_number: issueNumber
+              });
+
+              // A PullRequest is also represented by the Issues REST API.
+              if (issue.pull_request) {
+                core.warning(`Skipping #${issueNumber}: it is a pull request, not an issue.`);
+                continue;
+              }
+
+              if (issue.state === "closed") {
+                core.info(`Issue #${issueNumber} is already closed.`);
+                continue;
+              }
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                state: "closed",
+                state_reason: "completed"
+              });
+
+              core.notice(`Closed linked issue #${issueNumber} after PR #${pullNumber} was merged.`);
+            }
