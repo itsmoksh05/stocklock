@@ -73,8 +73,25 @@ class ResourceControllerTests {
     }
 
     @Test
+    void retrievesCurrentAvailableQuantity() throws Exception {
+        Resource saved = resourceRepository.saveAndFlush(
+                new Resource("Conference Room", "Meeting room on floor 2", 10));
+
+        mockMvc.perform(get("/api/resources/{id}/availability", saved.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resourceId", is(saved.getId().intValue())))
+                .andExpect(jsonPath("$.availableQuantity", is(10)));
+    }
+
+    @Test
     void returnsNotFoundForUnknownResourceId() throws Exception {
         mockMvc.perform(get("/api/resources/{id}", Long.MAX_VALUE))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void returnsNotFoundForUnknownAvailabilityId() throws Exception {
+        mockMvc.perform(get("/api/resources/{id}/availability", Long.MAX_VALUE))
                 .andExpect(status().isNotFound());
     }
 }

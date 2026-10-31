@@ -2,6 +2,7 @@ package dev.moksh.stocklock.resource.service;
 
 import dev.moksh.stocklock.resource.domain.Resource;
 import dev.moksh.stocklock.resource.dto.CreateResourceRequest;
+import dev.moksh.stocklock.resource.dto.ResourceAvailabilityResponse;
 import dev.moksh.stocklock.resource.dto.ResourceResponse;
 import dev.moksh.stocklock.resource.persistence.ResourceRepository;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,17 @@ public class ResourceService {
 	}
 
 	public ResourceResponse getById(Long id) {
-		Resource resource = resourceRepository.findById(id)
+		return toResponse(findResource(id));
+	}
+
+	public ResourceAvailabilityResponse getAvailability(Long id) {
+		Resource resource = findResource(id);
+		return new ResourceAvailabilityResponse(resource.getId(), resource.getQuantity());
+	}
+
+	private Resource findResource(Long id) {
+		return resourceRepository.findById(id)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found"));
-		return toResponse(resource);
 	}
 
 	private ResourceResponse toResponse(Resource resource) {
