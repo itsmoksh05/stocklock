@@ -50,9 +50,11 @@ class ReservationControllerTests {
 
 		createReservation(resource.getId(), 3, "success-key")
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.id").isNumber())
-				.andExpect(jsonPath("$.resourceId", is(resource.getId().intValue())))
-				.andExpect(jsonPath("$.quantity", is(3)));
+				.andExpect(jsonPath("$.success", is(true)))
+				.andExpect(jsonPath("$.error").doesNotExist())
+				.andExpect(jsonPath("$.data.id").isNumber())
+				.andExpect(jsonPath("$.data.resourceId", is(resource.getId().intValue())))
+				.andExpect(jsonPath("$.data.quantity", is(3)));
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountBefore + 1);
@@ -65,9 +67,11 @@ class ReservationControllerTests {
 
 		createReservation(resource.getId(), 3, "insufficient-key")
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.status", is(409)))
-				.andExpect(jsonPath("$.message", is("Insufficient available quantity")))
-				.andExpect(jsonPath("$.fieldErrors").isMap());
+				.andExpect(jsonPath("$.success", is(false)))
+				.andExpect(jsonPath("$.data").doesNotExist())
+				.andExpect(jsonPath("$.error.status", is(409)))
+				.andExpect(jsonPath("$.error.message", is("Insufficient available quantity")))
+				.andExpect(jsonPath("$.error.fieldErrors").isMap());
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(2);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountBefore);
@@ -82,9 +86,9 @@ class ReservationControllerTests {
 							{"resourceId":9223372036854775807,"quantity":1}
 							"""))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.status", is(404)))
-				.andExpect(jsonPath("$.message", is("Resource not found")))
-				.andExpect(jsonPath("$.fieldErrors").isMap());
+				.andExpect(jsonPath("$.error.status", is(404)))
+				.andExpect(jsonPath("$.error.message", is("Resource not found")))
+				.andExpect(jsonPath("$.error.fieldErrors").isMap());
 	}
 
 	@Test
@@ -103,7 +107,7 @@ class ReservationControllerTests {
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{\"resourceId\":1}"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.fieldErrors.quantity").exists());
+				.andExpect(jsonPath("$.error.fieldErrors.quantity").exists());
 	}
 
 	@Test
@@ -128,8 +132,8 @@ class ReservationControllerTests {
 		MvcResult replay = createReservation(resource.getId(), 3, "replay-key")
 				.andExpect(status().isCreated()).andReturn();
 
-		assertThat(JsonPath.<Integer>read(replay.getResponse().getContentAsString(), "$.id"))
-				.isEqualTo(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.id"));
+		assertThat(JsonPath.<Integer>read(replay.getResponse().getContentAsString(), "$.data.id"))
+				.isEqualTo(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.data.id"));
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountBefore + 1);
 	}
@@ -142,7 +146,7 @@ class ReservationControllerTests {
 
 		createReservation(resource.getId(), 4, "quantity-mismatch-key")
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message", is("Idempotency key was already used with a different request")));
+				.andExpect(jsonPath("$.error.message", is("Idempotency key was already used with a different request")));
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountAfterCreate);
@@ -157,7 +161,7 @@ class ReservationControllerTests {
 
 		createReservation(secondResource.getId(), 3, "resource-mismatch-key")
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message", is("Idempotency key was already used with a different request")));
+				.andExpect(jsonPath("$.error.message", is("Idempotency key was already used with a different request")));
 
 		assertThat(resourceRepository.findById(firstResource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 		assertThat(resourceRepository.findById(secondResource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
@@ -174,8 +178,8 @@ class ReservationControllerTests {
 		MvcResult second = createReservation(resource.getId(), 2, "separate-key-two")
 				.andExpect(status().isCreated()).andReturn();
 
-		assertThat(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.id"))
-				.isNotEqualTo(JsonPath.<Integer>read(second.getResponse().getContentAsString(), "$.id"));
+		assertThat(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.data.id"))
+				.isNotEqualTo(JsonPath.<Integer>read(second.getResponse().getContentAsString(), "$.data.id"));
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(6);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCountBefore + 2);
 	}
@@ -185,18 +189,18 @@ class ReservationControllerTests {
 		String body = "{\"resourceId\":1,\"quantity\":1}";
 		mockMvc.perform(post("/api/reservations").contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message", is("Required request header is missing")))
-				.andExpect(jsonPath("$.fieldErrors").isMap());
+				.andExpect(jsonPath("$.error.message", is("Required request header is missing")))
+				.andExpect(jsonPath("$.error.fieldErrors").isMap());
 		mockMvc.perform(post("/api/reservations").header("Idempotency-Key", "  ")
 					.contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message", is("Request validation failed")))
-				.andExpect(jsonPath("$.fieldErrors.idempotencyKey").exists());
+				.andExpect(jsonPath("$.error.message", is("Request validation failed")))
+				.andExpect(jsonPath("$.error.fieldErrors.idempotencyKey").exists());
 		mockMvc.perform(post("/api/reservations").header("Idempotency-Key", "k".repeat(256))
 					.contentType(MediaType.APPLICATION_JSON).content(body))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message", is("Request validation failed")))
-				.andExpect(jsonPath("$.fieldErrors.idempotencyKey").exists());
+				.andExpect(jsonPath("$.error.message", is("Request validation failed")))
+				.andExpect(jsonPath("$.error.fieldErrors.idempotencyKey").exists());
 	}
 
 	@Test
@@ -225,8 +229,8 @@ class ReservationControllerTests {
 
 			assertThat(first.getResponse().getStatus()).isEqualTo(201);
 			assertThat(second.getResponse().getStatus()).isEqualTo(201);
-			assertThat(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.id"))
-					.isEqualTo(JsonPath.<Integer>read(second.getResponse().getContentAsString(), "$.id"));
+			assertThat(JsonPath.<Integer>read(first.getResponse().getContentAsString(), "$.data.id"))
+					.isEqualTo(JsonPath.<Integer>read(second.getResponse().getContentAsString(), "$.data.id"));
 		} finally {
 			start.countDown();
 			executor.shutdownNow();
@@ -241,27 +245,27 @@ class ReservationControllerTests {
 		MvcResult created = createReservation(
 				resourceRepository.saveAndFlush(new Resource("Room", null, 10)).getId(), 2, "details-key")
 				.andExpect(status().isCreated()).andReturn();
-		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.data.id");
 
 		mockMvc.perform(get("/api/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.id", is(reservationId)))
-				.andExpect(jsonPath("$.resourceId").isNumber())
-				.andExpect(jsonPath("$.quantity", is(2)))
-				.andExpect(jsonPath("$.status", is("ACTIVE")));
+				.andExpect(jsonPath("$.data.id", is(reservationId)))
+				.andExpect(jsonPath("$.data.resourceId").isNumber())
+				.andExpect(jsonPath("$.data.quantity", is(2)))
+				.andExpect(jsonPath("$.data.status", is("ACTIVE")));
 	}
 
 	@Test
 	void returnsNotFoundForUnknownReservationDetailsAndCancellation() throws Exception {
 		mockMvc.perform(get("/api/reservations/{id}", Long.MAX_VALUE))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.status", is(404)))
-				.andExpect(jsonPath("$.message", is("Reservation not found")))
-				.andExpect(jsonPath("$.fieldErrors").isMap());
+				.andExpect(jsonPath("$.error.status", is(404)))
+				.andExpect(jsonPath("$.error.message", is("Reservation not found")))
+				.andExpect(jsonPath("$.error.fieldErrors").isMap());
 		mockMvc.perform(delete("/api/reservations/{id}", Long.MAX_VALUE))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.status", is(404)))
-				.andExpect(jsonPath("$.message", is("Reservation not found")));
+				.andExpect(jsonPath("$.error.status", is(404)))
+				.andExpect(jsonPath("$.error.message", is("Reservation not found")));
 	}
 
 	@Test
@@ -269,36 +273,36 @@ class ReservationControllerTests {
 		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
 		MvcResult created = createReservation(resource.getId(), 3, "cancel-key")
 				.andExpect(status().isCreated()).andReturn();
-		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.data.id");
 		long reservationCount = reservationRepository.count();
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(7);
 
 		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.id", is(reservationId)))
-				.andExpect(jsonPath("$.resourceId", is(resource.getId().intValue())))
-				.andExpect(jsonPath("$.quantity", is(3)))
-				.andExpect(jsonPath("$.status", is("CANCELLED")));
+				.andExpect(jsonPath("$.data.id", is(reservationId)))
+				.andExpect(jsonPath("$.data.resourceId", is(resource.getId().intValue())))
+				.andExpect(jsonPath("$.data.quantity", is(3)))
+				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCount);
 		mockMvc.perform(get("/api/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status", is("CANCELLED")));
+				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
 	}
 
 	@Test
 	void repeatedCancellationDoesNotRestoreQuantityAgain() throws Exception {
 		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
 		int reservationId = JsonPath.read(createReservation(resource.getId(), 4, "repeat-cancel-key")
-				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.data.id");
 
 		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status", is("CANCELLED")));
+				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
 		mockMvc.perform(delete("/api/reservations/{id}", reservationId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status", is("CANCELLED")));
+				.andExpect(jsonPath("$.data.status", is("CANCELLED")));
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
 	}
@@ -308,14 +312,14 @@ class ReservationControllerTests {
 		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
 		MvcResult created = createReservation(resource.getId(), 3, "cancelled-replay-key")
 				.andExpect(status().isCreated()).andReturn();
-		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
+		int reservationId = JsonPath.read(created.getResponse().getContentAsString(), "$.data.id");
 		mockMvc.perform(delete("/api/reservations/{id}", reservationId)).andExpect(status().isOk());
 		long reservationCount = reservationRepository.count();
 
 		MvcResult replay = createReservation(resource.getId(), 3, "cancelled-replay-key")
 				.andExpect(status().isCreated()).andReturn();
 
-		assertThat(JsonPath.<Integer>read(replay.getResponse().getContentAsString(), "$.id")).isEqualTo(reservationId);
+		assertThat(JsonPath.<Integer>read(replay.getResponse().getContentAsString(), "$.data.id")).isEqualTo(reservationId);
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(10);
 		assertThat(reservationRepository.count()).isEqualTo(reservationCount);
 	}
@@ -324,7 +328,7 @@ class ReservationControllerTests {
 	void concurrentCancellationRestoresQuantityOnlyOnce() throws Exception {
 		Resource resource = resourceRepository.saveAndFlush(new Resource("Room", null, 10));
 		int reservationId = JsonPath.read(createReservation(resource.getId(), 4, "concurrent-cancel-key")
-				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.id");
+				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(), "$.data.id");
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
 		ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -345,8 +349,8 @@ class ReservationControllerTests {
 			MvcResult second = secondFuture.get(20, TimeUnit.SECONDS);
 			assertThat(first.getResponse().getStatus()).isEqualTo(200);
 			assertThat(second.getResponse().getStatus()).isEqualTo(200);
-			assertThat(JsonPath.<String>read(first.getResponse().getContentAsString(), "$.status")).isEqualTo("CANCELLED");
-			assertThat(JsonPath.<String>read(second.getResponse().getContentAsString(), "$.status")).isEqualTo("CANCELLED");
+			assertThat(JsonPath.<String>read(first.getResponse().getContentAsString(), "$.data.status")).isEqualTo("CANCELLED");
+			assertThat(JsonPath.<String>read(second.getResponse().getContentAsString(), "$.data.status")).isEqualTo("CANCELLED");
 		} finally {
 			start.countDown();
 			executor.shutdownNow();

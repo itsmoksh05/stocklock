@@ -1,5 +1,6 @@
 package dev.moksh.stocklock.exception;
 
+import dev.moksh.stocklock.common.api.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -42,7 +43,7 @@ public class GlobalExceptionHandler {
 			"Idempotency key was already used with a different request");
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<ApiErrorResponse> handleBodyValidation(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleBodyValidation(
 			MethodArgumentNotValidException exception, HttpServletRequest request) {
 		Map<String, String> fieldErrors = new TreeMap<>();
 		for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
@@ -52,7 +53,7 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler(HandlerMethodValidationException.class)
-	public ResponseEntity<ApiErrorResponse> handleMethodValidation(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleMethodValidation(
 			HandlerMethodValidationException exception, HttpServletRequest request) {
 		Map<String, String> fieldErrors = new TreeMap<>();
 		for (ParameterValidationResult result : exception.getParameterValidationResults()) {
@@ -80,7 +81,7 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler(ConstraintViolationException.class)
-	public ResponseEntity<ApiErrorResponse> handleConstraintViolation(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleConstraintViolation(
 			ConstraintViolationException exception, HttpServletRequest request) {
 		Map<String, String> fieldErrors = new TreeMap<>();
 		for (ConstraintViolation<?> violation : exception.getConstraintViolations()) {
@@ -94,55 +95,55 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler(MissingRequestHeaderException.class)
-	public ResponseEntity<ApiErrorResponse> handleMissingHeader(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleMissingHeader(
 			MissingRequestHeaderException exception, HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, "Required request header is missing", request);
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
-	public ResponseEntity<ApiErrorResponse> handleUnreadableBody(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleUnreadableBody(
 			HttpMessageNotReadableException exception, HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, "Invalid request body", request);
 	}
 
 	@ExceptionHandler(MissingServletRequestParameterException.class)
-	public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleMissingRequestParameter(
 			MissingServletRequestParameterException exception, HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, "Required request parameter is missing", request);
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
-	public ResponseEntity<ApiErrorResponse> handleTypeMismatch(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleTypeMismatch(
 			MethodArgumentTypeMismatchException exception, HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, "Invalid request parameter", request);
 	}
 
 	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-	public ResponseEntity<ApiErrorResponse> handleMethodNotAllowed(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleMethodNotAllowed(
 			HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
 		return error(HttpStatus.METHOD_NOT_ALLOWED, "HTTP method not allowed", request);
 	}
 
 	@ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-	public ResponseEntity<ApiErrorResponse> handleUnsupportedMediaType(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleUnsupportedMediaType(
 			HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
 		return error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported media type", request);
 	}
 
 	@ExceptionHandler(NoResourceFoundException.class)
-	public ResponseEntity<ApiErrorResponse> handleNoResourceFound(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleNoResourceFound(
 			NoResourceFoundException exception, HttpServletRequest request) {
 		return error(HttpStatus.NOT_FOUND, "Resource not found", request);
 	}
 
 	@ExceptionHandler(NoHandlerFoundException.class)
-	public ResponseEntity<ApiErrorResponse> handleNoHandlerFound(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleNoHandlerFound(
 			NoHandlerFoundException exception, HttpServletRequest request) {
 		return error(HttpStatus.NOT_FOUND, "Endpoint not found", request);
 	}
 
 	@ExceptionHandler(ResponseStatusException.class)
-	public ResponseEntity<ApiErrorResponse> handleResponseStatus(
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleResponseStatus(
 			ResponseStatusException exception, HttpServletRequest request) {
 		HttpStatusCode status = exception.getStatusCode();
 		String message = exception.getReason();
@@ -158,22 +159,24 @@ public class GlobalExceptionHandler {
 	}
 
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<ApiErrorResponse> handleUnexpectedException(Exception exception, HttpServletRequest request) {
+	public ResponseEntity<ApiResponse<ApiErrorResponse>> handleUnexpectedException(
+			Exception exception, HttpServletRequest request) {
 		logger.error("Unhandled API exception for {} {}", request.getMethod(), request.getRequestURI(), exception);
 		return error(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.", request);
 	}
 
-	private ResponseEntity<ApiErrorResponse> error(HttpStatusCode status, String message, HttpServletRequest request) {
+	private ResponseEntity<ApiResponse<ApiErrorResponse>> error(
+			HttpStatusCode status, String message, HttpServletRequest request) {
 		return error(status, message, request, Map.of());
 	}
 
-	private ResponseEntity<ApiErrorResponse> error(HttpStatusCode status, String message,
+	private ResponseEntity<ApiResponse<ApiErrorResponse>> error(HttpStatusCode status, String message,
 			HttpServletRequest request, Map<String, String> fieldErrors) {
 		HttpStatus resolvedStatus = HttpStatus.resolve(status.value());
 		String reasonPhrase = resolvedStatus == null ? "Unknown Status" : resolvedStatus.getReasonPhrase();
 		ApiErrorResponse body = new ApiErrorResponse(
 				Instant.now(), status.value(), reasonPhrase, message, request.getRequestURI(), fieldErrors);
-		return ResponseEntity.status(status).body(body);
+		return ResponseEntity.status(status).body(ApiResponse.error(body));
 	}
 
 	private void addFieldError(Map<String, String> fieldErrors, String field, String message) {
