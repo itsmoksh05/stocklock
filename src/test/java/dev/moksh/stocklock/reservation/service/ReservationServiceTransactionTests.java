@@ -32,10 +32,11 @@ class ReservationServiceTransactionTests {
 	@Test
 	void rollsBackQuantityDecrementWhenReservationPersistenceFails() {
 		Resource resource = resourceRepository.saveAndFlush(new Resource("Projector", null, 5));
-		when(reservationRepository.save(any(Reservation.class)))
+		when(reservationRepository.saveAndFlush(any(Reservation.class)))
 				.thenThrow(new IllegalStateException("Simulated reservation persistence failure"));
 
-		assertThatThrownBy(() -> reservationService.create(new CreateReservationRequest(resource.getId(), 2)))
+		assertThatThrownBy(() -> reservationService.create(
+				new CreateReservationRequest(resource.getId(), 2), "rollback-test-key"))
 				.isInstanceOf(IllegalStateException.class);
 
 		assertThat(resourceRepository.findById(resource.getId()).orElseThrow().getQuantity()).isEqualTo(5);
